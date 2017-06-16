@@ -61,7 +61,7 @@ var App = {
         ajaxObject.error2=ajaxObject.error;
         ajaxObject.error=function (e) {
             if(typeof(ajaxObject.error2) == 'function'){
-                ajaxObject.error2(JSON.parse(e.responseText));
+                ajaxObject.error2(e.responseJSON,e);
             }
         };
         return $.ajax(ajaxObject);
@@ -141,6 +141,23 @@ var App = {
             if(Array.isArray(obj)){
                 obj={entity: restObj};
             }
+            var recursiveReplace = function(obj)
+            {
+                for (var k in obj)
+                {
+                    if (typeof obj[k] == "object" && obj[k] !== null){
+                        recursiveReplace(obj[k]);
+                    }
+                    if(k.indexOf('.')!=-1){
+                        var newK = k.replace(/\./g,'_');
+                        obj[newK] = obj[k];
+                        delete obj[k];
+                        k = newK;
+                    }
+                }
+                return obj;
+            };
+            obj = recursiveReplace(obj);
             return Mustache.to_html(template, obj);
         },
     },
@@ -192,18 +209,6 @@ $(window).on('load',function(){
     window.urlParams = $.deparam(window.location.search.substring(1));
 });
 
-String.prototype.trim = function(){
-    return this.replace(/^\s+|\s+$/g, "");
-};
-String.prototype.toCamel = function(){
-    return this.replace(/(\-[a-z])/g, function($1){return $1.toUpperCase().replace('-','');});
-};
-String.prototype.toDash = function(){
-    return this.replace(/([A-Z])/g, function($1){return "-"+$1.toLowerCase();});
-};
-String.prototype.toUnderscore = function(){
-    return this.replace(/([A-Z])/g, function($1){return "_"+$1.toLowerCase();});
-};
 (function($){
     $.fn.serializeObject = function(){
 
@@ -231,7 +236,31 @@ String.prototype.toUnderscore = function(){
             return push_counters[key]++;
         };
 
-        $.each($(this).serializeArray(), function(){
+        var serializedArray=$(this).serializeArray();
+        var newArray=[];
+        var findFirstByKey=function (array,name) {
+            var result=null;
+            array.forEach(function (el) {
+                if(el.name===name){
+                    result=el;
+                    return;
+                }
+                return;
+            });
+            return result;
+        };
+        serializedArray.forEach(function (el) {
+            var prev = findFirstByKey(newArray, el.name)
+            if(prev==null){
+                newArray.push(el);
+            }else{
+                if(!Array.isArray(prev.value)){
+                    prev.value = [prev.value];
+                }
+                prev.value.push(el.value);
+            }
+        });
+        $.each(newArray, function(){
 
             // skip invalid keys
             if(!patterns.validate.test(this.name)){
